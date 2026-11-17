@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Tidecaller — Keep the Lantern Lit. A 2D canvas arcade survival game: steer the lantern-boat, gather lumen orbs, blast shadow wisps, and survive ten waves.">
+<title>Tidecaller — Keep the Lantern Lit</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #03101c; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; }
+  /* Read aloud, never shown: the status line screen readers announce. */
+  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+</style>
+</head>
+<body>
+<canvas id="game" aria-label="Tidecaller: steer the lantern-boat, gather lumen orbs, and blast shadow wisps through ten waves"></canvas>
+<noscript><p style="color:#f2ead8;font-family:sans-serif;text-align:center">Tidecaller needs JavaScript to play.</p></noscript>
+<p id="status" role="status" aria-live="polite"></p>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
