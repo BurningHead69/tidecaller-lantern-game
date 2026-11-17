@@ -30,12 +30,20 @@ lantern and score, blast wisps with light bolts, and survive all ten waves.
 - **Combo:** pick up orbs one after another to raise a score multiplier (up to x8).
 - **Upgrades:** after every cleared wave, choose 1 of 3 blessings — a wider beam, a
   swifter boat, a lantern shield, richer lumen, a stronger pulse, a sturdier hull, a
-  brighter flame, or a faster lantern. The picks shape the rest of the run.
-- **Enemies:** drifting wisps, lunging darters, splitters that break into motes, and a
-  Warden mini-boss on waves 5 and 10 that shoots shadow bolts.
-- **Feel:** particles, screen shake, floating score text, a pulsing lantern glow,
-  parallax stars, moon and wave crests, and synthesised sound effects plus a slow
-  ambient pad.
+  brighter flame, a faster lantern, or a flame blessing: Ember Flame (bolts hit
+  harder, lantern burns ember-red) or Prism Flame (aqua flame, faster piercing
+  bolts). The picks shape the rest of the run — and change the lantern's colour.
+- **Enemies:** violet drifters, pink darting diamonds, amber splitters that break
+  into teal motes, green lurkers that dive below the surface (only their glow
+  shows) and surface to strike, and a crimson Warden mini-boss on waves 5 and 10
+  that shoots shadow bolts.
+- **Hazards:** whirlpools from wave 3 drag the boat toward their heart — steer
+  clear, or break free for a bonus. Waves also have moods: calm tides are
+  orb-rich, swarm tides send shadows faster and thicker.
+- **Feel:** glowing plankton, drifting mist, a shimmering moon-road on the water,
+  particle bursts, floating damage and score text, screen shake, a wave-clear
+  flash, a combo meter, a pulsing lantern glow, parallax stars and wave crests,
+  and synthesised sound effects plus a slow ambient pad.
 
 ## Controls
 
@@ -47,8 +55,8 @@ lantern and score, blast wisps with light bolts, and survive all ten waves.
 ## Screenshots
 
 - `screenshots/1-start.jpg` — the title screen over a living sea
-- `screenshots/2-play.jpg` — mid-wave play with the HUD, orbs and combo
-- `screenshots/3-wave.jpg` — wave 8, bolts flying and the pulse ring up
+- `screenshots/2-play.jpg` — mid-wave play with the HUD, orbs, combo meter and whirlpool
+- `screenshots/3-wave.jpg` — wave 8 swarm tide, bolts flying and the pulse ring up
 - `screenshots/4-end.jpg` — the game-over screen with run stats and restart
 
 ## Play it
