@@ -2,8 +2,16 @@
 // the shadow wisps, the HUD and every menu. The renderer only reads state; it never
 // changes a rule. Screens are named constants so main.js and shots.js can ask for them.
 
-import { BOAT, FIELD, FONT, ORB, PALETTE } from './config.js';
+import { BOAT, COMBO, FIELD, FONT, ORB, PALETTE, WHIRLPOOL } from './config.js';
 import { createRandom } from './random.js';
+
+/** '#rrggbb' plus an alpha, as an rgba() string the canvas can paint. */
+function hexToRgba(hex, alpha) {
+  const red = Number.parseInt(hex.slice(1, 3), 16);
+  const green = Number.parseInt(hex.slice(3, 5), 16);
+  const blue = Number.parseInt(hex.slice(5, 7), 16);
+  return `rgba(${red},${green},${blue},${alpha})`;
+}
 
 export const SCREEN_TITLE = 'title';
 export const SCREEN_PLAY = 'play';
@@ -57,6 +65,28 @@ export function createRenderer(canvas) {
   for (let index = 0; index < 9; index += 1) {
     crests.push({ y: 120 + index * 68, speed: 12 + index * 4, phase: skyRandom() * Math.PI * 2, alpha: 0.05 + index * 0.008 });
   }
+  // Glowing plankton drifting in the dark water: the sea's own faint stars.
+  const plankton = [];
+  for (let index = 0; index < 90; index += 1) {
+    plankton.push({
+      x: skyRandom() * FIELD.width,
+      y: 110 + skyRandom() * 580,
+      radius: 0.8 + skyRandom() * 1.6,
+      twinkle: skyRandom() * Math.PI * 2,
+      speed: 0.4 + skyRandom() * 1.4,
+      drift: skyRandom() * Math.PI * 2,
+    });
+  }
+  // Slow banks of mist that slide across the sea at different heights.
+  const mists = [];
+  for (let index = 0; index < 4; index += 1) {
+    mists.push({
+      y: 180 + index * 140,
+      radius: 200 + skyRandom() * 140,
+      speed: 6 + skyRandom() * 10,
+      phase: skyRandom() * Math.PI * 2,
+    });
+  }
 
   function roundRect(x, y, width, height, radius) {
     ctx.beginPath();
@@ -103,11 +133,36 @@ export function createRenderer(canvas) {
     ctx.arc(moonX - 14, moonY - 8, 9, 0, Math.PI * 2);
     ctx.arc(moonX + 12, moonY + 14, 6, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = 'rgba(244,232,193,0.10)';
-    for (let index = 0; index < 7; index += 1) {
-      const width = 120 - index * 12;
-      ctx.fillRect(moonX - width / 2, moonY + 60 + index * 26, width, 7);
+    // The moon's road of light: shimmering dashes that widen and wobble as they run
+    // down the water, fading with distance. No solid column behind them: a filled
+    // rectangle reads as a grey slab, not as light.
+    for (let index = 0; index < 9; index += 1) {
+      const width = 100 - index * 7 + Math.sin(time * 1.3 + index * 1.7) * 20;
+      const alpha = (0.14 + 0.20 * Math.abs(Math.sin(time * 1.9 + index * 1.3))) * (1 - index * 0.07);
+      ctx.fillStyle = `rgba(255,216,140,${alpha})`;
+      const dashX = moonX - width / 2 + Math.sin(time * 0.9 + index) * 11;
+      roundRect(dashX, moonY + 60 + index * 26, width, 5, 2.5);
+      ctx.fill();
     }
+
+    // Drifting mist, barely there, and the plankton's slow glow.
+    for (const mist of mists) {
+      const mistX = FIELD.width / 2 + Math.sin(time * 0.05 * mist.speed + mist.phase) * 420;
+      const mistGlow = ctx.createRadialGradient(mistX, mist.y, 10, mistX, mist.y, mist.radius);
+      mistGlow.addColorStop(0, 'rgba(160,200,220,0.05)');
+      mistGlow.addColorStop(1, 'rgba(160,200,220,0)');
+      ctx.fillStyle = mistGlow;
+      ctx.fillRect(mistX - mist.radius, mist.y - mist.radius, mist.radius * 2, mist.radius * 2);
+    }
+    for (const speck of plankton) {
+      const alpha = 0.25 + 0.55 * Math.abs(Math.sin(time * speck.speed + speck.twinkle));
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = PALETTE.plankton;
+      ctx.beginPath();
+      ctx.arc(speck.x + Math.sin(time * 0.12 + speck.drift) * 7, speck.y, speck.radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
 
     // Parallax crests sliding past.
     ctx.strokeStyle = '#9fd8e8';
@@ -125,25 +180,31 @@ export function createRenderer(canvas) {
     ctx.globalAlpha = 1;
   }
 
-  function drawLanternGlow(x, y, radius, alpha) {
+  function drawLanternGlow(x, y, radius, alpha, colour) {
     const glow = ctx.createRadialGradient(x, y, 4, x, y, radius);
-    glow.addColorStop(0, `rgba(255,217,122,${alpha})`);
-    glow.addColorStop(0.4, `rgba(255,180,60,${alpha * 0.35})`);
-    glow.addColorStop(1, 'rgba(255,180,60,0)');
+    glow.addColorStop(0, hexToRgba(colour || '#ffd97a', alpha));
+    glow.addColorStop(0.4, hexToRgba(colour || '#ffd97a', alpha * 0.35));
+    glow.addColorStop(1, hexToRgba(colour || '#ffd97a', 0));
     ctx.fillStyle = glow;
     ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
   }
 
   function drawOrb(orb, time) {
-    const pulse = 1 + Math.sin(time * 3 + orb.phase) * 0.15;
+    const pulse = 1 + Math.sin(time * 3 + orb.phase) * 0.22;
     const radius = ORB.radius * pulse;
     const fade = Math.min(1, orb.life / 2);
     ctx.globalAlpha = fade;
-    const glow = ctx.createRadialGradient(orb.x, orb.y, 2, orb.x, orb.y, radius * 3);
-    glow.addColorStop(0, 'rgba(255,201,77,0.7)');
+    const glow = ctx.createRadialGradient(orb.x, orb.y, 2, orb.x, orb.y, radius * 3.4);
+    glow.addColorStop(0, 'rgba(255,201,77,0.85)');
     glow.addColorStop(1, 'rgba(255,201,77,0)');
     ctx.fillStyle = glow;
-    ctx.fillRect(orb.x - radius * 3, orb.y - radius * 3, radius * 6, radius * 6);
+    ctx.fillRect(orb.x - radius * 3.4, orb.y - radius * 3.4, radius * 6.8, radius * 6.8);
+    // A bright ring around the orb so it pops against the dark sea.
+    ctx.strokeStyle = 'rgba(255,223,138,0.7)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(orb.x, orb.y, radius + 4 + Math.sin(time * 3 + orb.phase) * 2, 0, Math.PI * 2);
+    ctx.stroke();
     ctx.fillStyle = PALETTE.gold;
     ctx.beginPath();
     ctx.arc(orb.x, orb.y, radius, 0, Math.PI * 2);
@@ -155,35 +216,134 @@ export function createRenderer(canvas) {
     ctx.globalAlpha = 1;
   }
 
+  /** A whirlpool: a dark spiral with a foam ring and a faint warning circle at its reach. */
+  function drawWhirlpool(pool, time) {
+    const spin = pool.angle;
+    ctx.strokeStyle = 'rgba(159,216,232,0.28)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([10, 14]);
+    ctx.beginPath();
+    ctx.arc(pool.x, pool.y, WHIRLPOOL.pullRadius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    for (let ring = 0; ring < 3; ring += 1) {
+      const radius = pool.radius * (0.45 + ring * 0.28);
+      ctx.strokeStyle = `rgba(159,216,232,${0.5 - ring * 0.13})`;
+      ctx.lineWidth = 3 - ring * 0.7;
+      ctx.beginPath();
+      for (let step = 0; step <= 20; step += 1) {
+        const angle = spin * (1 + ring * 0.3) + (step / 20) * Math.PI * 1.6;
+        const r = radius * (1 - (step / 20) * 0.25);
+        const px = pool.x + Math.cos(angle) * r;
+        const py = pool.y + Math.sin(angle) * r;
+        if (step === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#010a12';
+    ctx.beginPath();
+    ctx.arc(pool.x, pool.y, pool.radius * 0.28, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   function drawWisp(wisp, time) {
+    // A lurker below the surface shows only its glow and widening ripples: the
+    // telegraph that something is about to strike.
+    if (wisp.kind === 'lurker' && wisp.submerged) {
+      const glow = ctx.createRadialGradient(wisp.x, wisp.y, 2, wisp.x, wisp.y, wisp.radius * 2.2);
+      glow.addColorStop(0, hexToRgba(wisp.colour, 0.5));
+      glow.addColorStop(1, hexToRgba(wisp.colour, 0));
+      ctx.fillStyle = glow;
+      ctx.fillRect(wisp.x - wisp.radius * 2.2, wisp.y - wisp.radius * 2.2, wisp.radius * 4.4, wisp.radius * 4.4);
+      for (let ring = 0; ring < 2; ring += 1) {
+        const phase = (time * 0.7 + ring * 0.5 + wisp.wobble) % 1;
+        ctx.strokeStyle = hexToRgba(wisp.colour, 0.55 * (1 - phase));
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(wisp.x, wisp.y, 10 + phase * 34, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      return;
+    }
     const wobble = Math.sin(time * 5 + wisp.wobble) * 0.08;
     const radius = wisp.radius * (1 + wobble);
+    // Each kind glows in its own colour, so the sea reads at a glance.
     const glow = ctx.createRadialGradient(wisp.x, wisp.y, 4, wisp.x, wisp.y, radius * 2.4);
-    glow.addColorStop(0, 'rgba(139,124,246,0.45)');
-    glow.addColorStop(1, 'rgba(139,124,246,0)');
+    glow.addColorStop(0, hexToRgba(wisp.colour, 0.5));
+    glow.addColorStop(1, hexToRgba(wisp.colour, 0));
     ctx.fillStyle = glow;
     ctx.fillRect(wisp.x - radius * 2.4, wisp.y - radius * 2.4, radius * 4.8, radius * 4.8);
-    // A ragged shadow body, darker at the rim.
     ctx.fillStyle = wisp.flash > 0 ? '#e8e2ff' : '#241a4d';
-    ctx.beginPath();
-    for (let index = 0; index <= 10; index += 1) {
-      const angle = (index / 10) * Math.PI * 2;
-      const edge = radius * (1 + Math.sin(angle * 3 + time * 4 + wisp.wobble) * 0.14);
-      const px = wisp.x + Math.cos(angle) * edge;
-      const py = wisp.y + Math.sin(angle) * edge;
-      if (index === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
+    if (wisp.kind === 'darter') {
+      // A darting diamond, sharp enough to read as fast.
+      ctx.beginPath();
+      ctx.moveTo(wisp.x, wisp.y - radius * 1.25);
+      ctx.lineTo(wisp.x + radius * 0.8, wisp.y);
+      ctx.lineTo(wisp.x, wisp.y + radius * 1.25);
+      ctx.lineTo(wisp.x - radius * 0.8, wisp.y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = wisp.colour;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    } else if (wisp.kind === 'lurker') {
+      // Surfaced: a sleek eel with fins, lunging at the boat.
+      ctx.beginPath();
+      ctx.ellipse(wisp.x, wisp.y, radius * 1.25, radius * 0.7, Math.sin(time * 6 + wisp.wobble) * 0.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = wisp.colour;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.fillStyle = wisp.colour;
+      ctx.beginPath();
+      ctx.moveTo(wisp.x - radius * 0.7, wisp.y - radius * 0.4);
+      ctx.lineTo(wisp.x - radius * 1.5, wisp.y - radius * 0.9);
+      ctx.lineTo(wisp.x - radius * 1.1, wisp.y);
+      ctx.closePath();
+      ctx.fill();
+    } else if (wisp.kind === 'mote') {
+      // A small spark with a fading tail.
+      ctx.beginPath();
+      ctx.arc(wisp.x, wisp.y, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = wisp.colour;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.fillStyle = hexToRgba(wisp.colour, 0.5);
+      ctx.beginPath();
+      ctx.arc(wisp.x - Math.cos(time * 6 + wisp.wobble) * radius * 1.4, wisp.y - Math.sin(time * 6 + wisp.wobble) * radius * 1.4, radius * 0.55, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // A ragged shadow body, darker at the rim.
+      ctx.beginPath();
+      for (let index = 0; index <= 10; index += 1) {
+        const angle = (index / 10) * Math.PI * 2;
+        const edge = radius * (1 + Math.sin(angle * 3 + time * 4 + wisp.wobble) * 0.14);
+        const px = wisp.x + Math.cos(angle) * edge;
+        const py = wisp.y + Math.sin(angle) * edge;
+        if (index === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = wisp.colour;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      if (wisp.kind === 'splitter') {
+        // A cracked core: the splitter is two motes waiting to hatch.
+        ctx.strokeStyle = hexToRgba(wisp.colour, 0.8);
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(wisp.x, wisp.y, radius * 0.55, 0, Math.PI * 2);
+        ctx.stroke();
+      }
     }
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = wisp.colour;
-    ctx.lineWidth = 2;
-    ctx.stroke();
     // Two burning eyes that track the boat.
     const eyeGap = radius * 0.42;
     const eyeY = wisp.y - radius * 0.12;
     for (const side of [-1, 1]) {
-      ctx.fillStyle = wisp.kind === 'warden' ? '#ff5d73' : '#ffdf8a';
+      ctx.fillStyle = wisp.kind === 'warden' ? '#ff5d73' : wisp.kind === 'lurker' ? '#eafffb' : '#ffdf8a';
       ctx.beginPath();
       ctx.arc(wisp.x + side * eyeGap, eyeY, wisp.kind === 'warden' ? 6 : 4, 0, Math.PI * 2);
       ctx.fill();
@@ -214,10 +374,11 @@ export function createRenderer(canvas) {
     const y = player.y + bob;
     const flicker = 1 + Math.sin(time * 11) * 0.08 + Math.sin(time * 23) * 0.05;
     const lightLevel = player.light / player.maxLight;
-    const glowRadius = 90 + lightLevel * 130;
+    // A warmer, wider glow than before: the lantern is the light the game is about.
+    const glowRadius = 105 + lightLevel * 155;
     const blink = player.invulnerable > 0 && Math.floor(time * 12) % 2 === 0;
 
-    drawLanternGlow(x, y - 18, glowRadius * flicker, 0.5 + lightLevel * 0.3);
+    drawLanternGlow(x, y - 18, glowRadius * flicker, 0.55 + lightLevel * 0.3, player.flameColour);
 
     ctx.save();
     if (blink) ctx.globalAlpha = 0.45;
@@ -258,10 +419,18 @@ export function createRenderer(canvas) {
     ctx.beginPath();
     ctx.arc(x, y - 48, 11, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = lightLevel > 0.15 ? '#ffe9a8' : '#8a7a5a';
+    // The lamp burns in the flame's own colour: gold, ember-red or aqua, by blessing.
+    ctx.fillStyle = lightLevel > 0.15 ? player.flameColour : '#8a7a5a';
     ctx.beginPath();
     ctx.arc(x, y - 48, 7 * flicker, 0, Math.PI * 2);
     ctx.fill();
+    if (lightLevel > 0.15 && player.flameColour !== '#ffd97a') {
+      ctx.strokeStyle = hexToRgba(player.flameColour, 0.8);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y - 48, 12, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     ctx.restore();
 
     // A faint ring shows the pulse's reach while it recharges.
@@ -280,7 +449,8 @@ export function createRenderer(canvas) {
       if (!bolt.active) continue;
       const tailX = bolt.x - bolt.vx * 0.03;
       const tailY = bolt.y - bolt.vy * 0.03;
-      ctx.strokeStyle = bolt.hostile ? '#ff5d73' : '#ffe9a8';
+      // Friendly bolts fly in the lantern's flame colour.
+      ctx.strokeStyle = bolt.hostile ? '#ff5d73' : state.player.flameColour;
       ctx.lineWidth = bolt.hostile ? 6 : 5;
       ctx.lineCap = 'round';
       ctx.beginPath();
@@ -294,7 +464,7 @@ export function createRenderer(canvas) {
     }
   }
 
-  function drawParticles(state) {
+  function drawParticles(state, screen) {
     for (const particle of state.particles) {
       if (!particle.active) continue;
       ctx.globalAlpha = Math.max(0, particle.life / particle.maxLife);
@@ -304,6 +474,9 @@ export function createRenderer(canvas) {
       ctx.fill();
     }
     ctx.globalAlpha = 1;
+    // Floating score text belongs to the playfield: never over an end screen, where
+    // a stale banner could ghost through the overlay.
+    if (screen === SCREEN_OVER || screen === SCREEN_WIN) return;
     ctx.textAlign = 'center';
     for (const floater of state.floaters) {
       if (!floater.active) continue;
@@ -355,12 +528,26 @@ export function createRenderer(canvas) {
     ctx.fillText(state.waveState === 'fight' ? `${remaining} shadows left` : 'Wave clear!', FIELD.width / 2, 60);
     drawBar(880, 14, 180, 20, player.hull / player.maxHull, PALETTE.barHull, `HULL ${Math.ceil(player.hull)}`);
     drawBar(880, 38, 180, 20, player.light / player.maxLight, PALETTE.barLight, `LIGHT ${Math.ceil(player.light)}`);
+    if (state.mood !== 'normal') {
+      // Short, right-aligned clear of the HULL/LIGHT bars.
+      ctx.fillStyle = state.mood === 'calm' ? PALETTE.calm : PALETTE.swarm;
+      ctx.font = `bold 16px ${FONT}`;
+      ctx.textAlign = 'right';
+      ctx.fillText(state.mood === 'calm' ? 'CALM TIDE' : 'SWARM TIDE', FIELD.width - 24, 52);
+    }
     if (state.combo > 1) {
-      // Under the score, clear of the centred wave text and the bars.
+      // Under the score, clear of the centred wave text and the bars, with a meter
+      // that drains as the combo window closes.
       ctx.fillStyle = PALETTE.combo;
       ctx.font = `bold 26px ${FONT}`;
       ctx.textAlign = 'left';
       ctx.fillText(`COMBO x${state.combo}`, 24, 100);
+      ctx.fillStyle = 'rgba(3,16,28,0.75)';
+      roundRect(24, 108, 150, 8, 4);
+      ctx.fill();
+      ctx.fillStyle = PALETTE.combo;
+      roundRect(24, 108, Math.max(8, 150 * (state.comboTimer / COMBO.window)), 8, 4);
+      ctx.fill();
     }
   }
 
@@ -396,8 +583,11 @@ export function createRenderer(canvas) {
     ctx.fillText('Keep the Lantern Lit', FIELD.width / 2, 252);
     ctx.fillStyle = PALETTE.muted;
     ctx.font = `21px ${FONT}`;
-    ctx.fillText('Ten waves of shadow wisps hunt your light. Gather lumen orbs,', FIELD.width / 2, 300);
-    ctx.fillText('blast the dark back, and do not let the Great Lantern go out.', FIELD.width / 2, 328);
+    ctx.fillText('Ten waves of shadow wisps hunt your light. Gather lumen orbs,', FIELD.width / 2, 296);
+    ctx.fillText('blast the dark back, and do not let the Great Lantern go out.', FIELD.width / 2, 324);
+    ctx.fillStyle = '#8fe8d8';
+    ctx.font = `bold 20px ${FONT}`;
+    ctx.fillText('Whirlpools drag at your hull from wave 3 — and something lurks below.', FIELD.width / 2, 356);
     ctx.fillStyle = PALETTE.text;
     ctx.font = `bold 20px ${FONT}`;
     ctx.fillText('WASD / ARROWS — steer      MOUSE — aim & click to fire a light bolt', FIELD.width / 2, 392);
@@ -501,6 +691,9 @@ export function createRenderer(canvas) {
       ctx.translate((Math.random() - 0.5) * state.shake, (Math.random() - 0.5) * state.shake);
     }
     drawSea(time);
+    for (const pool of state.whirlpools) {
+      if (pool.active) drawWhirlpool(pool, time);
+    }
     for (const orb of state.orbs) {
       if (orb.active) drawOrb(orb, time);
     }
@@ -509,8 +702,14 @@ export function createRenderer(canvas) {
     }
     drawBolts(state);
     drawBoat(state.player, time, screen);
-    drawParticles(state);
+    drawParticles(state, screen);
     ctx.restore();
+
+    // A warm flash when a wave clears, fading as the next one gathers.
+    if (state.clearFlash > 0 && screen !== SCREEN_OVER && screen !== SCREEN_WIN) {
+      ctx.fillStyle = `rgba(255,201,77,${state.clearFlash * 0.18})`;
+      ctx.fillRect(0, 0, FIELD.width, FIELD.height);
+    }
 
     if (screen === SCREEN_PLAY || screen === SCREEN_CHOICE || screen === SCREEN_PAUSED) {
       drawHud(state, best);

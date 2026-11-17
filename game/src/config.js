@@ -45,27 +45,50 @@ export const ORB = {
 /** Seconds a pickup keeps the combo chain alive; each pickup inside the window raises it. */
 export const COMBO = { window: 3.5, max: 8 };
 
-/** Shadow wisp kinds. `hp` is bolt hits to sink one; `score` is what sinking it pays. */
+/** Shadow wisp kinds. `hp` is bolt hits to sink one; `score` is what sinking it pays.
+ *  Every kind has its own colour, so the sea reads at a glance: violet drifters,
+ *  pink darters, amber splitters, teal motes, green lurkers, crimson Warden. */
 export const WISP = {
   drifter: { radius: 17, speed: 112, hp: 2, score: 25, hullDamage: 12, lightDamage: 6, colour: '#8b7cf6' },
-  darter: { radius: 13, speed: 168, hp: 2, score: 40, hullDamage: 10, lightDamage: 5, colour: '#c65df0' },
-  splitter: { radius: 22, speed: 82, hp: 3, score: 50, hullDamage: 14, lightDamage: 7, colour: '#6f5ae0' },
-  mote: { radius: 10, speed: 188, hp: 1, score: 20, hullDamage: 7, lightDamage: 4, colour: '#a78bfa' },
+  darter: { radius: 13, speed: 168, hp: 2, score: 40, hullDamage: 10, lightDamage: 5, colour: '#ff5da2' },
+  splitter: { radius: 22, speed: 82, hp: 3, score: 50, hullDamage: 14, lightDamage: 7, colour: '#ff9d3c' },
+  mote: { radius: 10, speed: 188, hp: 1, score: 20, hullDamage: 7, lightDamage: 4, colour: '#2dd4bf' },
+  lurker: { radius: 15, speed: 132, hp: 2, score: 60, hullDamage: 16, lightDamage: 8, colour: '#3ddc97' },
   warden: { radius: 46, speed: 58, hp: 42, score: 500, hullDamage: 26, lightDamage: 14, colour: '#e14b7a' },
 };
 
-/** One wave: how many of each wisp it sends, how fast they arrive, and the orb flow. */
+/** A whirlpool: a swirling hazard that drags the boat toward its heart. */
+export const WHIRLPOOL = {
+  radius: 64,
+  /** Inside this ring the pull is felt; escaping from it pays a bonus. */
+  pullRadius: 175,
+  pullSpeed: 175,
+  escapeScore: 50,
+};
+
+/** The lantern's flame colours: gold by birth, ember-red or aqua once blessed. */
+export const FLAME = {
+  gold: '#ffd97a',
+  ember: '#ff9a4d',
+  prism: '#6ff2d8',
+};
+
+/**
+ * One wave: how many of each wisp it sends, how fast they arrive, and the orb flow.
+ * `mood` varies the tide: a calm wave is orb-rich and gentle, a swarm wave sends
+ * shadows faster and thicker. Lurkers dive in from wave 3, whirlpools from wave 3 too.
+ */
 export const WAVES = [
-  { drifters: 6, darters: 0, splitters: 0, wardens: 0, spawnGap: 1.5, wispSpeed: 1.0, orbGap: 1.1 },
-  { drifters: 8, darters: 3, splitters: 0, wardens: 0, spawnGap: 1.3, wispSpeed: 1.05, orbGap: 1.1 },
-  { drifters: 9, darters: 5, splitters: 2, wardens: 0, spawnGap: 1.15, wispSpeed: 1.1, orbGap: 1.0 },
-  { drifters: 10, darters: 6, splitters: 3, wardens: 0, spawnGap: 1.0, wispSpeed: 1.15, orbGap: 1.0 },
-  { drifters: 8, darters: 5, splitters: 3, wardens: 1, spawnGap: 0.95, wispSpeed: 1.2, orbGap: 0.95 },
-  { drifters: 11, darters: 8, splitters: 4, wardens: 0, spawnGap: 0.9, wispSpeed: 1.25, orbGap: 0.95 },
-  { drifters: 12, darters: 9, splitters: 5, wardens: 0, spawnGap: 0.85, wispSpeed: 1.3, orbGap: 0.9 },
-  { drifters: 13, darters: 10, splitters: 6, wardens: 0, spawnGap: 0.8, wispSpeed: 1.35, orbGap: 0.9 },
-  { drifters: 13, darters: 11, splitters: 7, wardens: 0, spawnGap: 0.75, wispSpeed: 1.4, orbGap: 0.85 },
-  { drifters: 10, darters: 9, splitters: 6, wardens: 1, spawnGap: 0.7, wispSpeed: 1.45, orbGap: 0.85 },
+  { drifters: 6, darters: 0, splitters: 0, lurkers: 0, wardens: 0, whirlpools: 0, mood: 'calm', spawnGap: 1.5, wispSpeed: 1.0, orbGap: 1.0 },
+  { drifters: 8, darters: 3, splitters: 0, lurkers: 0, wardens: 0, whirlpools: 0, mood: 'calm', spawnGap: 1.3, wispSpeed: 1.05, orbGap: 1.0 },
+  { drifters: 9, darters: 5, splitters: 2, lurkers: 2, wardens: 0, whirlpools: 1, mood: 'normal', spawnGap: 1.15, wispSpeed: 1.1, orbGap: 1.0 },
+  { drifters: 10, darters: 6, splitters: 3, lurkers: 2, wardens: 0, whirlpools: 1, mood: 'calm', spawnGap: 1.0, wispSpeed: 1.15, orbGap: 0.95 },
+  { drifters: 8, darters: 5, splitters: 3, lurkers: 3, wardens: 1, whirlpools: 1, mood: 'normal', spawnGap: 0.95, wispSpeed: 1.2, orbGap: 0.95 },
+  { drifters: 11, darters: 8, splitters: 4, lurkers: 4, wardens: 0, whirlpools: 2, mood: 'swarm', spawnGap: 0.9, wispSpeed: 1.25, orbGap: 0.95 },
+  { drifters: 12, darters: 9, splitters: 5, lurkers: 4, wardens: 0, whirlpools: 2, mood: 'normal', spawnGap: 0.85, wispSpeed: 1.3, orbGap: 0.9 },
+  { drifters: 13, darters: 10, splitters: 6, lurkers: 5, wardens: 0, whirlpools: 2, mood: 'swarm', spawnGap: 0.8, wispSpeed: 1.35, orbGap: 0.9 },
+  { drifters: 13, darters: 11, splitters: 7, lurkers: 5, wardens: 0, whirlpools: 2, mood: 'swarm', spawnGap: 0.75, wispSpeed: 1.4, orbGap: 0.85 },
+  { drifters: 10, darters: 9, splitters: 6, lurkers: 4, wardens: 1, whirlpools: 2, mood: 'normal', spawnGap: 0.7, wispSpeed: 1.45, orbGap: 0.85 },
 ];
 export const TOTAL_WAVES = WAVES.length;
 
@@ -79,10 +102,12 @@ export const UPGRADES = [
   { id: 'hull', name: 'Oak Hull', desc: 'Repair 40 hull and +20 max hull.', max: 3 },
   { id: 'flame', name: 'Bright Flame', desc: 'Lantern drains 30% slower, +20 max light.', max: 2 },
   { id: 'rapid', name: 'Rapid Lantern', desc: 'Bolts fire 25% faster.', max: 3 },
+  { id: 'ember', name: 'Ember Flame', desc: 'Bolts deal +1 damage; the lantern burns ember-red.', max: 2 },
+  { id: 'prism', name: 'Prism Flame', desc: 'Flame turns aqua; bolts fly 30% faster and pierce +1.', max: 2 },
 ];
 
 /** Particle and floating-text budgets, allocated once at boot. */
-export const POOL = { orbs: 24, wisps: 48, bolts: 64, particles: 256, floaters: 32 };
+export const POOL = { orbs: 24, wisps: 56, bolts: 64, particles: 320, floaters: 40, whirlpools: 4 };
 
 export const PALETTE = {
   deep: '#04141f',
@@ -104,6 +129,9 @@ export const PALETTE = {
   barHull: '#ff7a5c',
   barLight: '#ffc94d',
   combo: '#ff9d3c',
+  plankton: '#8fe8d8',
+  calm: '#8fe8d8',
+  swarm: '#ff9d3c',
 };
 
 export const FONT = '"Trebuchet MS", "Segoe UI", system-ui, sans-serif';

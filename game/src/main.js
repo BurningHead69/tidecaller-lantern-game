@@ -9,7 +9,7 @@
 
 import { BEST_KEY, STEP } from './config.js';
 import { createRandom } from './random.js';
-import { createWorld, EVENT_HIT, EVENT_ORB, EVENT_OVER, EVENT_PULSE, EVENT_SHIELD, EVENT_WARDEN, EVENT_WAVE_CLEAR, EVENT_WIN, EVENT_WISP_DIE } from './world.js';
+import { createWorld, EVENT_ESCAPE, EVENT_HIT, EVENT_LURKER_SURFACE, EVENT_ORB, EVENT_OVER, EVENT_PULSE, EVENT_SHIELD, EVENT_WARDEN, EVENT_WAVE_CLEAR, EVENT_WIN, EVENT_WISP_DIE } from './world.js';
 import { ACTION_CHOICE_1, ACTION_CHOICE_2, ACTION_CHOICE_3, ACTION_CONFIRM, ACTION_MUTE, ACTION_PAUSE, ACTION_PULSE, ACTION_RESTART, createInput } from './input.js';
 import { createAudio } from './audio.js';
 import { buttonForPoint, createRenderer, SCREEN_CHOICE, SCREEN_OVER, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_TITLE, SCREEN_WIN } from './render.js';
@@ -172,6 +172,8 @@ function runGame() {
     if (events & EVENT_WARDEN) audio.wardenDie();
     if (events & EVENT_PULSE) audio.pulse();
     if (events & EVENT_SHIELD) audio.shieldBlock();
+    if (events & EVENT_ESCAPE) audio.escape();
+    if (events & EVENT_LURKER_SURFACE) audio.lurkerSurface();
     if (events & EVENT_HIT) {
       audio.hit();
       announce(`Hit! Hull ${Math.max(0, Math.ceil(world.state.player.hull))}.`);

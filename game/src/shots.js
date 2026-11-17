@@ -9,7 +9,7 @@ import { EVENT_OVER, EVENT_WAVE_CLEAR, EVENT_WIN } from './world.js';
 import { SCREEN_CHOICE, SCREEN_OVER, SCREEN_PLAY, SCREEN_TITLE, SCREEN_WIN } from './render.js';
 
 const START_SECONDS = 6;
-const PLAY_SECONDS = 15;
+const PLAY_SECONDS = 40;
 const WAVE_SECONDS = 150;
 const END_LIMIT_SECONDS = 600;
 const VICTORY_LIMIT_SECONDS = 900;
@@ -23,6 +23,8 @@ function nearestWisp(state) {
   let foundDistance = Infinity;
   for (const wisp of state.wisps) {
     if (!wisp.active) continue;
+    // A submerged lurker is below the bolts' reach: not a target.
+    if (wisp.kind === 'lurker' && wisp.submerged) continue;
     const distance = Math.hypot(wisp.x - state.player.x, wisp.y - state.player.y);
     if (distance < foundDistance) {
       foundDistance = distance;
@@ -67,6 +69,19 @@ function steerToward(state, tx, ty, safeDistance) {
       const push = (safeDistance - wDistance) / safeDistance;
       mx += (wdx / wDistance) * push * 1.6;
       my += (wdy / wDistance) * push * 1.6;
+    }
+  }
+  // Keep clear of whirlpools: the pull is escapable, but a staged run should not
+  // spend its waves circling one.
+  for (const pool of state.whirlpools) {
+    if (!pool.active) continue;
+    const pdx = player.x - pool.x;
+    const pdy = player.y - pool.y;
+    const pDistance = Math.hypot(pdx, pdy) || 1;
+    if (pDistance < 230) {
+      const push = (230 - pDistance) / 230;
+      mx += (pdx / pDistance) * push * 2.0;
+      my += (pdy / pDistance) * push * 2.0;
     }
   }
   const length = Math.hypot(mx, my) || 1;

@@ -110,6 +110,16 @@ export function createAudio() {
     shieldBlock() {
       tone(660, 0.18, 'sine', 0.2, 990);
     },
+    /** A rising two-note chime for slipping out of a whirlpool's grip. */
+    escape() {
+      tone(392, 0.16, 'sine', 0.2, 523.25);
+      tone(523.25, 0.22, 'sine', 0.18, 783.99);
+    },
+    /** A low bubbling warning as a lurker breaks the surface. */
+    lurkerSurface() {
+      tone(300, 0.25, 'triangle', 0.14, 150);
+      tone(210, 0.2, 'triangle', 0.1, 120);
+    },
     waveClear() {
       tone(523.25, 0.25, 'sine', 0.2);
       tone(659.25, 0.25, 'sine', 0.2);

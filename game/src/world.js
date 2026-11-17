@@ -4,13 +4,14 @@
 // flags, so the caller can react (sound, announcements) without the world knowing about
 // screens or sound. Nothing here allocates after createWorld returns.
 
-import { BOAT, COMBO, FIELD, ORB, POOL, TOTAL_WAVES, UPGRADES, WAVES, WISP } from './config.js';
+import { BOAT, COMBO, FIELD, FLAME, ORB, POOL, TOTAL_WAVES, UPGRADES, WAVES, WHIRLPOOL, WISP } from './config.js';
 import { rangeRandom, shuffleRandom } from './random.js';
 
 export const KIND_DRIFTER = 'drifter';
 export const KIND_DARTER = 'darter';
 export const KIND_SPLITTER = 'splitter';
 export const KIND_MOTE = 'mote';
+export const KIND_LURKER = 'lurker';
 export const KIND_WARDEN = 'warden';
 
 export const EVENT_ORB = 1;
@@ -23,6 +24,8 @@ export const EVENT_PULSE = 64;
 export const EVENT_WISP_DIE = 128;
 export const EVENT_SHIELD = 256;
 export const EVENT_WARDEN = 512;
+export const EVENT_ESCAPE = 1024;
+export const EVENT_LURKER_SURFACE = 2048;
 
 function distanceSq(ax, ay, bx, by) {
   const dx = ax - bx;
@@ -37,6 +40,7 @@ export function createWorld(random) {
     invulnerable: 0, fireCooldown: 0, pulseCooldown: 0,
     speedMul: 1, orbScoreMul: 1, orbLightMul: 1, pierce: 0, pulseRadiusMul: 1, pulseDamage: 0,
     fireRateMul: 1, lightDrainMul: 1, shieldCharges: 0,
+    flameColour: FLAME.gold, boltDamage: BOAT.boltDamage, boltSpeedMul: 1,
   };
   const upgradesTaken = {};
   for (const upgrade of UPGRADES) upgradesTaken[upgrade.id] = 0;
@@ -51,6 +55,7 @@ export function createWorld(random) {
       active: false, kind: KIND_DRIFTER, x: 0, y: 0, vx: 0, vy: 0, hp: 1, radius: 17,
       speed: 95, score: 25, hullDamage: 12, lightDamage: 6, colour: WISP.drifter.colour,
       lungeTimer: 0, lunging: 0, shootTimer: 0, flash: 0, wobble: 0,
+      submerged: 0, diveTimer: 0, surfaceTimer: 0,
     });
   }
   const bolts = [];
@@ -65,12 +70,17 @@ export function createWorld(random) {
   for (let index = 0; index < POOL.floaters; index += 1) {
     floaters.push({ active: false, x: 0, y: 0, text: '', life: 0, maxLife: 1, colour: '#ffffff', size: 18 });
   }
+  const whirlpools = [];
+  for (let index = 0; index < POOL.whirlpools; index += 1) {
+    whirlpools.push({ active: false, x: 0, y: 0, radius: WHIRLPOOL.radius, angle: 0, caught: false });
+  }
 
   const state = {
-    player, orbs, wisps, bolts, particles, floaters,
+    player, orbs, wisps, bolts, particles, floaters, whirlpools,
     score: 0, combo: 0, comboTimer: 0, bestCombo: 0, kills: 0, orbsCollected: 0,
     wave: 1, waveState: 'fight', spawnQueue: [], spawnTimer: 0, orbTimer: 0,
     time: 0, shake: 0, choices: [], pulsesUsed: 0, boltsFired: 0,
+    mood: 'calm', clearFlash: 0, escapes: 0,
   };
 
   function free(pool) {
@@ -129,6 +139,31 @@ export function createWorld(random) {
     orb.phase = random() * Math.PI * 2;
   }
 
+  /** The wave's speed multiplier: a swarm tide hurries every shadow a little. */
+  function waveSpeedMul() {
+    const def = WAVES[state.wave - 1];
+    if (!def) return 1;
+    return def.wispSpeed * (def.mood === 'swarm' ? 1.05 : 1);
+  }
+
+  /** The wave's orb-flow multiplier: a calm tide is orb-rich, a swarm tide is stingy. */
+  function waveOrbMul() {
+    const def = WAVES[state.wave - 1];
+    if (!def) return 1;
+    if (def.mood === 'calm') return 0.7;
+    if (def.mood === 'swarm') return 1.15;
+    return 1;
+  }
+
+  /** The wave's spawn-gap multiplier: calm waves arrive gently, swarm waves thickly. */
+  function waveSpawnMul() {
+    const def = WAVES[state.wave - 1];
+    if (!def) return 1;
+    if (def.mood === 'calm') return 1.1;
+    if (def.mood === 'swarm') return 0.85;
+    return 1;
+  }
+
   function spawnWisp(kind, x, y) {
     const def = WISP[kind];
     const wisp = free(wisps);
@@ -141,7 +176,7 @@ export function createWorld(random) {
     wisp.vy = 0;
     wisp.hp = def.hp;
     wisp.radius = def.radius;
-    wisp.speed = def.speed * (WAVES[state.wave - 1]?.wispSpeed ?? 1);
+    wisp.speed = def.speed * waveSpeedMul();
     wisp.score = def.score;
     wisp.hullDamage = def.hullDamage;
     wisp.lightDamage = def.lightDamage;
@@ -151,6 +186,10 @@ export function createWorld(random) {
     wisp.shootTimer = 2.5 + random();
     wisp.flash = 0;
     wisp.wobble = random() * Math.PI * 2;
+    // A lurker starts below the surface, invisible to bolts, and only shows a glow.
+    wisp.submerged = kind === KIND_LURKER ? 1 : 0;
+    wisp.diveTimer = kind === KIND_LURKER ? 2 + random() * 1.5 : 0;
+    wisp.surfaceTimer = 0;
     return wisp;
   }
 
@@ -168,18 +207,46 @@ export function createWorld(random) {
     for (let index = 0; index < def.drifters; index += 1) queue.push(KIND_DRIFTER);
     for (let index = 0; index < def.darters; index += 1) queue.push(KIND_DARTER);
     for (let index = 0; index < def.splitters; index += 1) queue.push(KIND_SPLITTER);
+    for (let index = 0; index < def.lurkers; index += 1) queue.push(KIND_LURKER);
     for (let index = 0; index < def.wardens; index += 1) queue.push(KIND_WARDEN);
     return shuffleRandom(random, queue);
   }
 
+  /** Place this wave's whirlpools, clear of the boat so none opens on top of it. */
+  function spawnWhirlpools(count) {
+    for (const pool of whirlpools) pool.active = false;
+    let placed = 0;
+    for (let tries = 0; tries < 24 && placed < count; tries += 1) {
+      const x = rangeRandom(random, 140, FIELD.width - 140);
+      const y = rangeRandom(random, 180, FIELD.height - 140);
+      if (distanceSq(x, y, player.x, player.y) < 300 * 300) continue;
+      if (whirlpools.some((pool) => pool.active && distanceSq(x, y, pool.x, pool.y) < 320 * 320)) continue;
+      const pool = free(whirlpools);
+      if (pool === null) return;
+      pool.active = true;
+      pool.x = x;
+      pool.y = y;
+      pool.angle = random() * Math.PI * 2;
+      pool.caught = false;
+      placed += 1;
+    }
+  }
+
   function startWave(waveNumber) {
+    const def = WAVES[waveNumber - 1];
     state.wave = waveNumber;
     state.waveState = 'fight';
+    state.mood = def.mood;
     state.spawnQueue = buildSpawnQueue(waveNumber);
     state.spawnTimer = 1.0;
     state.orbTimer = 0.4;
     state.choices = [];
     player.shieldCharges = upgradesTaken.shield > 0 ? 1 : 0;
+    spawnWhirlpools(def.whirlpools);
+    // A calm tide opens with extra lumen on the water.
+    if (def.mood === 'calm') {
+      for (let index = 0; index < 4; index += 1) spawnOrb(false);
+    }
   }
 
   function offerChoices() {
@@ -187,6 +254,8 @@ export function createWorld(random) {
     const picked = shuffleRandom(random, available).slice(0, 3);
     state.choices = picked;
     state.waveState = 'choice';
+    // The tide settles between waves: the whirlpools close with the wave.
+    for (const pool of whirlpools) pool.active = false;
   }
 
   function applyUpgrade(upgradeId) {
@@ -202,8 +271,16 @@ export function createWorld(random) {
     else if (upgradeId === 'hull') { player.maxHull += 20; player.hull = Math.min(player.maxHull, player.hull + 40); }
     else if (upgradeId === 'flame') { player.maxLight += 20; player.lightDrainMul *= 0.7; player.light = Math.min(player.maxLight, player.light + 20); }
     else if (upgradeId === 'rapid') player.fireRateMul *= 0.75;
+    else if (upgradeId === 'ember') { player.boltDamage += 1; player.flameColour = FLAME.ember; }
+    else if (upgradeId === 'prism') { player.pierce += 1; player.boltSpeedMul *= 1.3; player.flameColour = FLAME.prism; }
     startWave(state.wave + 1);
     return true;
+  }
+
+  /** Floating score text is part of the playfield: clear it when the run ends, so no
+   *  stale banner (like a Warden's death cry) can ghost through the end screen. */
+  function clearFloaters() {
+    for (const floater of floaters) floater.active = false;
   }
 
   function killWisp(wisp, events) {
@@ -285,13 +362,14 @@ export function createWorld(random) {
       state.orbTimer -= dt;
       if (state.orbTimer <= 0) {
         spawnOrb(true);
-        state.orbTimer = WAVES[state.wave - 1].orbGap * (0.8 + random() * 0.4);
+        state.orbTimer = WAVES[state.wave - 1].orbGap * waveOrbMul() * (0.8 + random() * 0.4);
       }
     }
     return activeCount;
   }
 
   function updateWisps(dt, harmless) {
+    let events = 0;
     for (const wisp of wisps) {
       if (!wisp.active) continue;
       if (wisp.flash > 0) wisp.flash -= dt;
@@ -300,7 +378,29 @@ export function createWorld(random) {
       const distance = Math.hypot(dx, dy) || 1;
       const nx = dx / distance;
       const ny = dy / distance;
-      if (wisp.kind === KIND_DARTER) {
+      if (wisp.kind === KIND_LURKER) {
+        if (wisp.submerged) {
+          // Below the surface it only shows a glow and drifts in slowly, untouchable.
+          wisp.diveTimer -= dt;
+          wisp.x += nx * wisp.speed * 0.35 * dt;
+          wisp.y += ny * wisp.speed * 0.35 * dt;
+          if (wisp.diveTimer <= 0) {
+            wisp.submerged = 0;
+            wisp.surfaceTimer = 1.6;
+            burst(wisp.x, wisp.y, wisp.colour, 8, 120, 3);
+            events |= EVENT_LURKER_SURFACE;
+          }
+        } else {
+          // Surfaced it lunges at the boat, then dives again before it can be cornered.
+          wisp.surfaceTimer -= dt;
+          wisp.x += nx * wisp.speed * 1.6 * dt;
+          wisp.y += ny * wisp.speed * 1.6 * dt;
+          if (wisp.surfaceTimer <= 0) {
+            wisp.submerged = 1;
+            wisp.diveTimer = 2 + random() * 1.5;
+          }
+        }
+      } else if (wisp.kind === KIND_DARTER) {
         wisp.lungeTimer -= dt;
         if (wisp.lunging > 0) {
           wisp.lunging -= dt;
@@ -347,6 +447,35 @@ export function createWorld(random) {
         wisp.active = false;
       }
     }
+    return events;
+  }
+
+  /**
+   * Whirlpools drag the boat toward their heart. The pull is strong but escapable:
+   * steer clear and a boat that was caught and breaks free is paid for the escape.
+   */
+  function updateWhirlpools(dt, events) {
+    for (const pool of whirlpools) {
+      if (!pool.active) continue;
+      pool.angle += dt * 3;
+      const dx = pool.x - player.x;
+      const dy = pool.y - player.y;
+      const distance = Math.hypot(dx, dy) || 1;
+      if (distance < WHIRLPOOL.pullRadius) {
+        const strength = WHIRLPOOL.pullSpeed * (1 - distance / WHIRLPOOL.pullRadius);
+        player.x = Math.min(FIELD.width - 30, Math.max(30, player.x + (dx / distance) * strength * dt));
+        player.y = Math.min(FIELD.height - 30, Math.max(84, player.y + (dy / distance) * strength * dt));
+        if (distance < WHIRLPOOL.radius * 0.9) pool.caught = true;
+      } else if (pool.caught && distance > WHIRLPOOL.pullRadius * 1.05) {
+        pool.caught = false;
+        state.escapes += 1;
+        state.score += WHIRLPOOL.escapeScore;
+        burst(player.x, player.y, '#9fe8ff', 18, 260, 4);
+        addFloater(player.x, player.y - 34, `ESCAPED! +${WHIRLPOOL.escapeScore}`, '#9fe8ff', 20);
+        events |= EVENT_ESCAPE;
+      }
+    }
+    return events;
   }
 
   function updateBolts(dt) {
@@ -366,6 +495,8 @@ export function createWorld(random) {
       if (!bolt.active || bolt.hostile) continue;
       for (const wisp of wisps) {
         if (!wisp.active) continue;
+        // A submerged lurker is below the bolts' reach: only its glow shows.
+        if (wisp.kind === KIND_LURKER && wisp.submerged) continue;
         const reach = bolt.radius + wisp.radius;
         if (distanceSq(bolt.x, bolt.y, wisp.x, wisp.y) > reach * reach) continue;
         wisp.hp -= bolt.damage;
@@ -386,6 +517,7 @@ export function createWorld(random) {
   function collideWithPlayer(events) {
     for (const wisp of wisps) {
       if (!wisp.active) continue;
+      if (wisp.kind === KIND_LURKER && wisp.submerged) continue;
       const reach = BOAT.radius + wisp.radius - 4;
       if (distanceSq(player.x, player.y, wisp.x, wisp.y) > reach * reach) continue;
       if (player.invulnerable > 0) continue;
@@ -452,8 +584,11 @@ export function createWorld(random) {
     player.fireRateMul = 1;
     player.lightDrainMul = 1;
     player.shieldCharges = 0;
+    player.flameColour = FLAME.gold;
+    player.boltDamage = BOAT.boltDamage;
+    player.boltSpeedMul = 1;
     for (const upgrade of UPGRADES) upgradesTaken[upgrade.id] = 0;
-    for (const pool of [orbs, wisps, bolts, particles, floaters]) {
+    for (const pool of [orbs, wisps, bolts, particles, floaters, whirlpools]) {
       for (const item of pool) item.active = false;
     }
     state.score = 0;
@@ -466,6 +601,9 @@ export function createWorld(random) {
     state.shake = 0;
     state.pulsesUsed = 0;
     state.boltsFired = 0;
+    state.mood = 'calm';
+    state.clearFlash = 0;
+    state.escapes = 0;
     startWave(1);
     spawnOrb(true);
     spawnOrb(true);
@@ -481,6 +619,7 @@ export function createWorld(random) {
     let events = 0;
     state.time += dt;
     if (state.shake > 0) state.shake = Math.max(0, state.shake - dt * 40);
+    if (state.clearFlash > 0) state.clearFlash = Math.max(0, state.clearFlash - dt * 1.4);
     updateParticles(dt);
 
     if (state.waveState === 'choice' || state.waveState === 'won' || state.waveState === 'lost') {
@@ -513,6 +652,7 @@ export function createWorld(random) {
     if (player.light <= 0) {
       player.light = 0;
       state.waveState = 'lost';
+      clearFloaters();
       burst(player.x, player.y, '#ffc94d', 30, 260, 4);
       return events | EVENT_OVER;
     }
@@ -532,9 +672,9 @@ export function createWorld(random) {
         bolt.hostile = false;
         bolt.x = player.x + (dx / length) * 26;
         bolt.y = player.y + (dy / length) * 26;
-        bolt.vx = (dx / length) * BOAT.boltSpeed;
-        bolt.vy = (dy / length) * BOAT.boltSpeed;
-        bolt.damage = BOAT.boltDamage;
+        bolt.vx = (dx / length) * BOAT.boltSpeed * player.boltSpeedMul;
+        bolt.vy = (dy / length) * BOAT.boltSpeed * player.boltSpeedMul;
+        bolt.damage = player.boltDamage;
         bolt.pierce = player.pierce;
         bolt.life = 1.6;
         bolt.radius = 6 + player.pierce * 2;
@@ -575,22 +715,28 @@ export function createWorld(random) {
         const kind = state.spawnQueue.shift();
         const at = edgeSpawn();
         spawnWisp(kind, at.x, at.y);
-        state.spawnTimer = WAVES[state.wave - 1].spawnGap * (0.85 + random() * 0.3);
+        state.spawnTimer = WAVES[state.wave - 1].spawnGap * waveSpawnMul() * (0.85 + random() * 0.3);
       }
     }
 
     updateOrbs(dt, false);
-    updateWisps(dt, false);
+    events |= updateWisps(dt, false);
+    events = updateWhirlpools(dt, events);
     updateBolts(dt);
     events = collideBoltsWithWisps(events);
     events = collectOrbs(events);
     events = collideWithPlayer(events);
-    if (events & EVENT_OVER) return events;
+    if (events & EVENT_OVER) {
+      clearFloaters();
+      return events;
+    }
 
     // The wave is done when nothing is left to arrive and nothing is left to fight.
     if (state.spawnQueue.length === 0 && !wisps.some((wisp) => wisp.active)) {
+      state.clearFlash = 1;
       if (state.wave >= TOTAL_WAVES) {
         state.waveState = 'won';
+        clearFloaters();
         burst(player.x, player.y, '#ffc94d', 60, 420, 5);
         return events | EVENT_WIN;
       }
